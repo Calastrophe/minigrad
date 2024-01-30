@@ -11,6 +11,7 @@ enum Op {
 }
 
 type BxValue<T> = Box<Value<T>>;
+type BxProp<T> = Box<dyn FnMut(&mut BxValue<T>)>;
 
 pub struct Value<T>
 where
@@ -18,6 +19,7 @@ where
 {
     pub data: T,
     pub grad: T,
+    backward: BxProp<T>,
     prev: Option<(BxValue<T>, Option<BxValue<T>>)>,
     op: Option<Op>,
 }
@@ -30,14 +32,21 @@ where
         Value {
             data,
             grad: T::zero(),
+            backward: Box::new(|_| {}),
             prev: None,
             op: None,
         }
     }
 
-    fn from_op(data: T, prev: (BxValue<T>, Option<BxValue<T>>), op: Op) -> Self {
+    fn from_op(
+        data: T,
+        backward: BxProp<T>,
+        prev: (BxValue<T>, Option<BxValue<T>>),
+        op: Op,
+    ) -> Self {
         Value {
             data,
+            backward,
             grad: T::zero(),
             prev: Some(prev),
             op: Some(op),
@@ -52,6 +61,10 @@ where
     type Output = Value<T>;
 
     fn add(self, rhs: Self) -> Self::Output {
+        let bx_self = Box::new(self);
+
+        let backward
+
         Value::from_op(
             self.data + rhs.data,
             (Box::new(self), Some(Box::new(rhs))),
