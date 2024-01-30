@@ -12,7 +12,6 @@ enum Op {
 
 type BxValue<T> = Box<Value<T>>;
 
-#[derive(Clone)]
 pub struct Value<T>
 where
     T: NumAssign + Copy,
