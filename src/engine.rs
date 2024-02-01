@@ -19,6 +19,7 @@ enum Op<T: MathOps<T>> {
 
 type BxValue<T> = Box<Value<T>>;
 
+#[derive(Debug)]
 pub struct Value<T: MathOps<T>> {
     pub data: T,
     pub grad: T,
@@ -36,22 +37,34 @@ impl<T: MathOps<T>> Value<T> {
         }
     }
 
-    pub fn relu(self) -> Self {
-        let value = if self.data < T::zero() {
-            T::zero()
-        } else {
-            self.data
-        };
-
-        Value::from_op(value, (Box::new(self), None), Op::Relu)
-    }
-
     fn from_op(data: T, prev: (BxValue<T>, Option<BxValue<T>>), op: Op<T>) -> Self {
         Value {
             data,
             grad: T::zero(),
             prev: Some(prev),
             op: Some(op),
+        }
+    }
+
+    pub fn backprop(&mut self) {
+        self.grad = T::one();
+
+        self.explore();
+    }
+
+    fn explore(&mut self) {
+        self.backward();
+
+        if let Some(prev) = &mut self.prev {
+            match prev {
+                (ref mut lhs, Some(ref mut rhs)) => {
+                    rhs.explore();
+                    lhs.explore();
+                }
+                (ref mut lhs, None) => {
+                    lhs.explore();
+                }
+            }
         }
     }
 
@@ -84,6 +97,16 @@ impl<T: MathOps<T>> Value<T> {
                 }
             }
         }
+    }
+
+    pub fn relu(self) -> Self {
+        let value = if self.data < T::zero() {
+            T::zero()
+        } else {
+            self.data
+        };
+
+        Value::from_op(value, (Box::new(self), None), Op::Relu)
     }
 }
 
