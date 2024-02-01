@@ -3,68 +3,99 @@ use std::cmp::PartialOrd;
 use std::ops::{Add, Div, Mul, Neg, Sub};
 
 #[derive(Debug, Clone, Copy)]
-enum Op {
+enum Op<T>
+where
+    T: NumAssign + Copy + PartialOrd + Pow<T, Output = T> + Neg<Output = T>,
+{
     Add,
     Mul,
     Relu,
-    Pow,
+    Pow(T),
 }
 
 type BxValue<T> = Box<Value<T>>;
-type BxProp<T> = Box<dyn FnMut(&mut BxValue<T>)>;
 
 pub struct Value<T>
 where
-    T: NumAssign + Copy,
+    T: NumAssign + Copy + PartialOrd + Pow<T, Output = T> + Neg<Output = T>,
 {
     pub data: T,
     pub grad: T,
-    backward: BxProp<T>,
     prev: Option<(BxValue<T>, Option<BxValue<T>>)>,
-    op: Option<Op>,
+    op: Option<Op<T>>,
 }
 
 impl<T> Value<T>
 where
-    T: NumAssign + Copy,
+    T: NumAssign + Copy + PartialOrd + Pow<T, Output = T> + Neg<Output = T>,
 {
     pub fn new(data: T) -> Value<T> {
         Value {
             data,
             grad: T::zero(),
-            backward: Box::new(|_| {}),
             prev: None,
             op: None,
         }
     }
 
-    fn from_op(
-        data: T,
-        backward: BxProp<T>,
-        prev: (BxValue<T>, Option<BxValue<T>>),
-        op: Op,
-    ) -> Self {
+    pub fn relu(self) -> Self {
+        let value = if self.data < T::zero() {
+            T::zero()
+        } else {
+            self.data
+        };
+
+        Value::from_op(value, (Box::new(self), None), Op::Relu)
+    }
+
+    fn from_op(data: T, prev: (BxValue<T>, Option<BxValue<T>>), op: Op<T>) -> Self {
         Value {
             data,
-            backward,
             grad: T::zero(),
             prev: Some(prev),
             op: Some(op),
+        }
+    }
+
+    fn backward(&mut self) {
+        if let Some(op) = self.op {
+            match op {
+                Op::Add => {
+                    if let Some((ref mut left, Some(ref mut right))) = &mut self.prev {
+                        left.grad += self.grad;
+                        right.grad += self.grad;
+                    }
+                }
+                Op::Mul => {
+                    if let Some((ref mut left, Some(ref mut right))) = &mut self.prev {
+                        left.grad += right.data * self.grad;
+                        right.grad += left.data * self.grad;
+                    }
+                }
+                Op::Relu => {
+                    if let Some((ref mut left, None)) = &mut self.prev {
+                        if self.data > T::zero() {
+                            left.grad += self.grad;
+                        }
+                    }
+                }
+                Op::Pow(exp) => {
+                    if let Some((ref mut left, None)) = &mut self.prev {
+                        left.grad += exp * left.data.pow(exp - T::one()) * self.grad
+                    }
+                }
+            }
         }
     }
 }
 
 impl<T> Add for Value<T>
 where
-    T: NumAssign + Copy,
+    T: NumAssign + Copy + PartialOrd + Pow<T, Output = T> + Neg<Output = T>,
 {
     type Output = Value<T>;
 
     fn add(self, rhs: Self) -> Self::Output {
-        let bx_self = Box::new(self);
-
-        let backward
-
         Value::from_op(
             self.data + rhs.data,
             (Box::new(self), Some(Box::new(rhs))),
@@ -75,7 +106,7 @@ where
 
 impl<T> Mul for Value<T>
 where
-    T: NumAssign + Copy,
+    T: NumAssign + Copy + PartialOrd + Pow<T, Output = T> + Neg<Output = T>,
 {
     type Output = Value<T>;
 
@@ -90,33 +121,18 @@ where
 
 impl<T> Pow<T> for Value<T>
 where
-    T: NumAssign + Copy + PartialOrd + Pow<T, Output = T>,
+    T: NumAssign + Copy + PartialOrd + Pow<T, Output = T> + Neg<Output = T>,
 {
     type Output = Value<T>;
 
     fn pow(self, rhs: T) -> Self::Output {
-        Value::from_op(self.data.pow(rhs), (Box::new(self), None), Op::Pow)
-    }
-}
-
-impl<T> Value<T>
-where
-    T: NumAssign + Copy + PartialOrd,
-{
-    pub fn relu(self) -> Self {
-        let value = if self.data < T::zero() {
-            T::zero()
-        } else {
-            self.data
-        };
-
-        Value::from_op(value, (Box::new(self), None), Op::Relu)
+        Value::from_op(self.data.pow(rhs), (Box::new(self), None), Op::Pow(rhs))
     }
 }
 
 impl<T> Neg for Value<T>
 where
-    T: NumAssign + Copy + Neg<Output = T>,
+    T: NumAssign + Copy + PartialOrd + Pow<T, Output = T> + Neg<Output = T>,
 {
     type Output = Value<T>;
 
@@ -129,7 +145,7 @@ where
 
 impl<T> Sub for Value<T>
 where
-    T: NumAssign + Copy + Neg<Output = T>,
+    T: NumAssign + Copy + PartialOrd + Pow<T, Output = T> + Neg<Output = T>,
 {
     type Output = Value<T>;
 
@@ -140,7 +156,7 @@ where
 
 impl<T> Div for Value<T>
 where
-    T: NumAssign + Copy + Pow<T, Output = T> + PartialOrd + Neg<Output = T>,
+    T: NumAssign + Copy + PartialOrd + Pow<T, Output = T> + Neg<Output = T>,
 {
     type Output = Value<T>;
 
