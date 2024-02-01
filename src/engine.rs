@@ -2,11 +2,15 @@ use num_traits::{NumAssign, Pow};
 use std::cmp::PartialOrd;
 use std::ops::{Add, Div, Mul, Neg, Sub};
 
-#[derive(Debug, Clone, Copy)]
-enum Op<T>
-where
-    T: NumAssign + Copy + PartialOrd + Pow<T, Output = T> + Neg<Output = T>,
+pub trait MathOps<T>: NumAssign + Copy + PartialOrd + Pow<T, Output = T> + Neg<Output = T> {}
+
+impl<T> MathOps<T> for T where
+    T: NumAssign + Copy + PartialOrd + Pow<T, Output = T> + Neg<Output = T>
 {
+}
+
+#[derive(Debug, Clone, Copy)]
+enum Op<T: MathOps<T>> {
     Add,
     Mul,
     Relu,
@@ -15,20 +19,14 @@ where
 
 type BxValue<T> = Box<Value<T>>;
 
-pub struct Value<T>
-where
-    T: NumAssign + Copy + PartialOrd + Pow<T, Output = T> + Neg<Output = T>,
-{
+pub struct Value<T: MathOps<T>> {
     pub data: T,
     pub grad: T,
     prev: Option<(BxValue<T>, Option<BxValue<T>>)>,
     op: Option<Op<T>>,
 }
 
-impl<T> Value<T>
-where
-    T: NumAssign + Copy + PartialOrd + Pow<T, Output = T> + Neg<Output = T>,
-{
+impl<T: MathOps<T>> Value<T> {
     pub fn new(data: T) -> Value<T> {
         Value {
             data,
@@ -89,10 +87,7 @@ where
     }
 }
 
-impl<T> Add for Value<T>
-where
-    T: NumAssign + Copy + PartialOrd + Pow<T, Output = T> + Neg<Output = T>,
-{
+impl<T: MathOps<T>> Add for Value<T> {
     type Output = Value<T>;
 
     fn add(self, rhs: Self) -> Self::Output {
@@ -104,10 +99,7 @@ where
     }
 }
 
-impl<T> Mul for Value<T>
-where
-    T: NumAssign + Copy + PartialOrd + Pow<T, Output = T> + Neg<Output = T>,
-{
+impl<T: MathOps<T>> Mul for Value<T> {
     type Output = Value<T>;
 
     fn mul(self, rhs: Self) -> Self::Output {
@@ -119,10 +111,7 @@ where
     }
 }
 
-impl<T> Pow<T> for Value<T>
-where
-    T: NumAssign + Copy + PartialOrd + Pow<T, Output = T> + Neg<Output = T>,
-{
+impl<T: MathOps<T>> Pow<T> for Value<T> {
     type Output = Value<T>;
 
     fn pow(self, rhs: T) -> Self::Output {
@@ -130,10 +119,7 @@ where
     }
 }
 
-impl<T> Neg for Value<T>
-where
-    T: NumAssign + Copy + PartialOrd + Pow<T, Output = T> + Neg<Output = T>,
-{
+impl<T: MathOps<T>> Neg for Value<T> {
     type Output = Value<T>;
 
     fn neg(self) -> Self::Output {
@@ -143,10 +129,7 @@ where
     }
 }
 
-impl<T> Sub for Value<T>
-where
-    T: NumAssign + Copy + PartialOrd + Pow<T, Output = T> + Neg<Output = T>,
-{
+impl<T: MathOps<T>> Sub for Value<T> {
     type Output = Value<T>;
 
     fn sub(self, rhs: Self) -> Self::Output {
@@ -154,10 +137,7 @@ where
     }
 }
 
-impl<T> Div for Value<T>
-where
-    T: NumAssign + Copy + PartialOrd + Pow<T, Output = T> + Neg<Output = T>,
-{
+impl<T: MathOps<T>> Div for Value<T> {
     type Output = Value<T>;
 
     fn div(self, rhs: Self) -> Self::Output {
