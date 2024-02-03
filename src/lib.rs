@@ -57,11 +57,11 @@ pub struct MLP<T: MathOps<T>> {
 
 impl<T: MathOps<T>> MLP<T> {
     pub fn new(layers: &[usize]) -> Self {
-        let last = layers.len() - 1;
+        let before_last = layers.len() - 2;
         let layers = layers
             .windows(2)
             .enumerate()
-            .map(|(index, pair)| Layer::new(pair[0], pair[1], last != index))
+            .map(|(index, pair)| Layer::new(pair[0], pair[1], before_last != index))
             .collect();
 
         MLP { layers }
