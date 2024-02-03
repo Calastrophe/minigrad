@@ -1,11 +1,16 @@
 use num_traits::{NumAssign, Pow};
+use rand::distributions::uniform::SampleUniform;
 use std::cmp::PartialOrd;
+use std::iter::Sum;
 use std::ops::{Add, Div, Mul, Neg, Sub};
 
-pub trait MathOps<T>: NumAssign + Copy + PartialOrd + Pow<T, Output = T> + Neg<Output = T> {}
+pub trait MathOps<T>:
+    NumAssign + Copy + PartialOrd + Pow<T, Output = T> + Neg<Output = T> + SampleUniform
+{
+}
 
 impl<T> MathOps<T> for T where
-    T: NumAssign + Copy + PartialOrd + Pow<T, Output = T> + Neg<Output = T>
+    T: NumAssign + Copy + PartialOrd + Pow<T, Output = T> + Neg<Output = T> + SampleUniform
 {
 }
 
@@ -19,7 +24,7 @@ enum Op<T: MathOps<T>> {
 
 type BxValue<T> = Box<Value<T>>;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Value<T: MathOps<T>> {
     pub data: T,
     pub grad: T,
