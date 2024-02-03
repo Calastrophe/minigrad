@@ -1,176 +1,133 @@
-use num_traits::{NumAssign, Pow};
-use rand::distributions::uniform::SampleUniform;
-use std::cmp::PartialOrd;
-use std::iter::Sum;
+use num_traits::Pow;
 use std::ops::{Add, Div, Mul, Neg, Sub};
 
-pub trait MathOps<T>:
-    NumAssign + Copy + PartialOrd + Pow<T, Output = T> + Neg<Output = T> + SampleUniform
-{
+#[derive(Debug, Clone)]
+enum Op {
+    Add(Box<Value>, Box<Value>),
+    Mul(Box<Value>, Box<Value>),
+    Relu(Box<Value>),
+    Pow(Box<Value>, f64),
 }
-
-impl<T> MathOps<T> for T where
-    T: NumAssign + Copy + PartialOrd + Pow<T, Output = T> + Neg<Output = T> + SampleUniform
-{
-}
-
-#[derive(Debug, Clone, Copy)]
-enum Op<T: MathOps<T>> {
-    Add,
-    Mul,
-    Relu,
-    Pow(T),
-}
-
-type BxValue<T> = Box<Value<T>>;
 
 #[derive(Debug, Clone)]
-pub struct Value<T: MathOps<T>> {
-    pub data: T,
-    pub grad: T,
-    prev: Option<(BxValue<T>, Option<BxValue<T>>)>,
-    op: Option<Op<T>>,
+pub struct Value {
+    pub data: f64,
+    pub grad: f64,
+    op: Option<Op>,
 }
 
-impl<T: MathOps<T>> Value<T> {
-    pub fn new(data: T) -> Value<T> {
+impl Value {
+    pub fn new(data: f64) -> Value {
         Value {
             data,
-            grad: T::zero(),
-            prev: None,
+            grad: 0.0,
             op: None,
         }
     }
 
-    fn from_op(data: T, prev: (BxValue<T>, Option<BxValue<T>>), op: Op<T>) -> Self {
+    fn from_op(data: f64, op: Op) -> Self {
         Value {
             data,
-            grad: T::zero(),
-            prev: Some(prev),
+            grad: 0.0,
             op: Some(op),
         }
     }
 
-    pub fn backprop(&mut self) {
-        self.grad = T::one();
+    pub fn backward(&mut self) {
+        self.grad = 1.0;
 
-        self.explore();
+        self.dfs();
     }
 
-    fn explore(&mut self) {
-        self.backward();
+    fn dfs(&mut self) {
+        self.gradient_fn();
 
-        if let Some(prev) = &mut self.prev {
-            match prev {
-                (ref mut lhs, Some(ref mut rhs)) => {
-                    rhs.explore();
-                    lhs.explore();
+        if let Some(op) = &mut self.op {
+            match op {
+                Op::Add(lhs, rhs) | Op::Mul(lhs, rhs) => {
+                    rhs.dfs();
+                    lhs.dfs();
                 }
-                (ref mut lhs, None) => {
-                    lhs.explore();
+                Op::Relu(lhs) | Op::Pow(lhs, ..) => {
+                    lhs.dfs();
                 }
             }
         }
     }
 
-    fn backward(&mut self) {
-        if let Some(op) = self.op {
+    fn gradient_fn(&mut self) {
+        if let Some(op) = &mut self.op {
             match op {
-                Op::Add => {
-                    if let Some((ref mut left, Some(ref mut right))) = &mut self.prev {
-                        left.grad += self.grad;
-                        right.grad += self.grad;
+                Op::Add(lhs, rhs) => {
+                    lhs.grad += self.grad;
+                    rhs.grad += self.grad;
+                }
+                Op::Mul(lhs, rhs) => {
+                    lhs.grad += rhs.data * self.grad;
+                    rhs.grad += lhs.data * self.grad;
+                }
+                Op::Relu(lhs) => {
+                    if self.data > 0.0 {
+                        lhs.grad += self.grad;
                     }
                 }
-                Op::Mul => {
-                    if let Some((ref mut left, Some(ref mut right))) = &mut self.prev {
-                        left.grad += right.data * self.grad;
-                        right.grad += left.data * self.grad;
-                    }
-                }
-                Op::Relu => {
-                    if let Some((ref mut left, None)) = &mut self.prev {
-                        if self.data > T::zero() {
-                            left.grad += self.grad;
-                        }
-                    }
-                }
-                Op::Pow(exp) => {
-                    if let Some((ref mut left, None)) = &mut self.prev {
-                        left.grad += exp * left.data.pow(exp - T::one()) * self.grad
-                    }
-                }
+                Op::Pow(lhs, exp) => lhs.grad += *exp * lhs.data.pow(*exp - 1.0) * self.grad,
             }
         }
     }
 
     pub fn relu(self) -> Self {
-        let value = if self.data < T::zero() {
-            T::zero()
-        } else {
-            self.data
-        };
+        let value = if self.data < 0.0 { 0.0 } else { self.data };
 
-        Value::from_op(value, (Box::new(self), None), Op::Relu)
+        Value::from_op(value, Op::Relu(Box::new(self)))
     }
 }
 
-impl<T: MathOps<T>> Add for Value<T> {
-    type Output = Value<T>;
+impl Add for Value {
+    type Output = Value;
 
     fn add(self, rhs: Self) -> Self::Output {
-        Value::from_op(
-            self.data + rhs.data,
-            (Box::new(self), Some(Box::new(rhs))),
-            Op::Add,
-        )
+        Value::from_op(self.data + rhs.data, Op::Add(Box::new(self), Box::new(rhs)))
     }
 }
 
-impl<T: MathOps<T>> Mul for Value<T> {
-    type Output = Value<T>;
+impl Mul for Value {
+    type Output = Value;
 
     fn mul(self, rhs: Self) -> Self::Output {
-        Value::from_op(
-            self.data * rhs.data,
-            (Box::new(self), Some(Box::new(rhs))),
-            Op::Mul,
-        )
+        Value::from_op(self.data * rhs.data, Op::Mul(Box::new(self), Box::new(rhs)))
     }
 }
 
-impl<T: MathOps<T>> Pow<T> for Value<T> {
-    type Output = Value<T>;
+impl<T: Into<f64>> Pow<T> for Value {
+    type Output = Value;
 
     fn pow(self, rhs: T) -> Self::Output {
-        Value::from_op(self.data.pow(rhs), (Box::new(self), None), Op::Pow(rhs))
+        let rhs = rhs.into();
+        Value::from_op(self.data.pow(rhs), Op::Pow(Box::new(self), rhs))
     }
 }
 
-impl<T: MathOps<T>> Neg for Value<T> {
-    type Output = Value<T>;
+impl Neg for Value {
+    type Output = Value;
 
     fn neg(self) -> Self::Output {
-        let neg = Value::new(T::one().neg());
-
-        self * neg
+        self * Value::new(-1.0)
     }
 }
 
-impl<T: MathOps<T>> Sub for Value<T> {
-    type Output = Value<T>;
+impl Sub for Value {
+    type Output = Value;
 
     fn sub(self, rhs: Self) -> Self::Output {
         self + (-rhs)
     }
 }
 
-impl<T: MathOps<T>> Div for Value<T> {
-    type Output = Value<T>;
+impl Div for Value {
+    type Output = Value;
 
     fn div(self, rhs: Self) -> Self::Output {
-        let neg = T::one().neg();
-
-        self * rhs.pow(neg)
+        self * rhs.pow(-1.0)
     }
 }

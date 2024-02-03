@@ -9,6 +9,6 @@ fn backprop() {
     let d = e + c;
     let f = Value::new(-2.0);
     let mut g = d * f;
-    g.backprop();
+    g.backward();
     dbg!(g);
 }
